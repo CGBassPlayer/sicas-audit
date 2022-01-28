@@ -5,6 +5,8 @@ version = "1.0.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.53"
+
 clap = { version = "3.0.13", features = ["derive"] }
 configparser = "3.0.0"
 

@@ -1,4 +1,5 @@
-use std::{error::Error, fs::File, io::Read, path::Path, str::FromStr};
+use anyhow::{anyhow, Result};
+use std::{fs::File, io::Read, path::Path, str::FromStr};
 use std::ffi::OsStr;
 use clap::{Parser, AppSettings, Subcommand};
 use configparser::ini::Ini;
@@ -50,14 +51,15 @@ enum Commands {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let args: Args = Args::parse();
     if !Path::new(&args.jar).exists() {
-        panic!("\"{}\" JAR file does not exist", args.jar);
+        return Err(anyhow!("Unable to open JAR file: {:?}", args.jar));
     }
 
     let mut config = Ini::new();
-    let _ = config.load(&args.config)?;
+    let _ = config.load(&args.config)
+        .expect("Unable to load configuration");
     init_simple_logger(&args, &config);
 
     match args.command {
@@ -103,7 +105,7 @@ fn init_simple_logger(args: &Args, config: &Ini) {
         .unwrap();
 }
 
-fn retrieve_archive_file_contents(jar: &str, archive_file_name: String) -> Result<String, Box<dyn Error>> {
+fn retrieve_archive_file_contents(jar: &str, archive_file_name: String) -> Result<String> {
     let jar_file = File::open(jar)?;
     let mut archive = ZipArchive::new(jar_file)?;
     let mut archive_file = archive.by_name(archive_file_name.as_str())?;
@@ -113,7 +115,7 @@ fn retrieve_archive_file_contents(jar: &str, archive_file_name: String) -> Resul
     Ok(file_contents)
 }
 
-fn traverse_archive_file(jar: &str, ignored_files: Vec<&str>) -> Result<Vec<String>, Box<dyn Error>> {
+fn traverse_archive_file(jar: &str, ignored_files: Vec<&str>) -> Result<Vec<String>> {
     let jar_file = File::open(jar)?;
     let mut archive = ZipArchive::new(jar_file)?;
     let mut archive_files = Vec::new();
