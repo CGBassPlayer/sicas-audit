@@ -5,7 +5,8 @@ use clap::{Parser, AppSettings, Subcommand};
 use configparser::ini::Ini;
 use log::LevelFilter;
 use simple_logger::SimpleLogger;
-use zip::ZipArchive;
+use zip::{ZipArchive};
+
 
 const EMPTY_STRING: &str = "";
 
@@ -25,10 +26,6 @@ struct Args {
     #[clap(short, long, default_value = "config.ini")]
     config: String,
 
-    /// Name of the audit trail file
-    #[clap(short, long)]
-    file: Option<String>,
-
     #[clap(subcommand)]
     command: Commands,
 }
@@ -36,7 +33,10 @@ struct Args {
 #[derive(Subcommand)]
 enum Commands {
     /// Display contents of the archived file
-    Show,
+    Show {
+        /// Name of the audit trail file
+        file: Option<String>
+    },
     /// List all within the archive. This can be customized in the configuration file
     List,
     /// Edit a file within the archive
@@ -48,7 +48,7 @@ enum Commands {
     Delete {
         /// Name of the file from the archive
         file: String
-    }
+    },
 }
 
 fn main() -> Result<()> {
@@ -63,24 +63,41 @@ fn main() -> Result<()> {
     init_simple_logger(&args, &config);
 
     match args.command {
-        Commands::Show => {
-            let file = args.file.unwrap_or_else(|| config.get("AUDIT", "AUDIT_FILE")
+        Commands::Show { file } => {
+            log::debug!("Retrieving archive file name");
+            let file = file.unwrap_or_else(|| config.get("AUDIT", "AUDIT_FILE")
                 .unwrap_or_else(|| "AUDIT_TRAIL".to_string()));
 
-            let audit_trail = retrieve_archive_file_contents(&args.jar, file)?;
+            log::debug!("Retrieving file contents");
+            let audit_trail = retrieve_archive_file_contents(&args.jar, &file)?;
+
+            log::debug!("printing file contents");
             println!("{}", audit_trail);
         }
         Commands::List => {
+            log::debug!("Listing files in archive");
             let ignored_str = config.get("AUDIT", "IGNORED_FILES").unwrap_or_else(|| EMPTY_STRING.to_string());
             let ignored_files = ignored_str.split(", ").collect::<Vec<&str>>();
             let archive_files = traverse_archive_file(&args.jar, ignored_files)?;
 
+            log::debug!("archive file count: {}", archive_files.len());
             println!("{:#?}", archive_files);
         }
         Commands::Edit { file } => {
-            println!("Editing {:?}", file);
+            let edit_file = file.unwrap_or_else(|| config.get("AUDIT", "AUDIT_FILE")
+                .unwrap_or_else(|| "AUDIT_TRAIL".to_string()));
+            log::debug!("Editing {:?}", edit_file);
+            let file_contents = retrieve_archive_file_contents(&args.jar, &edit_file)?;
+            let edited = edit::edit(&file_contents)?;
+
+            if file_contents.eq(&edited) {
+                println!("No Changes were made. Exiting...");
+                return Ok(());
+            }
+
+            log::info!("Updating {}", &args.jar);
         }
-        Commands::Delete {file} => {
+        Commands::Delete { file } => {
             println!("Deleting {}", file);
         }
     }
@@ -105,10 +122,10 @@ fn init_simple_logger(args: &Args, config: &Ini) {
         .unwrap();
 }
 
-fn retrieve_archive_file_contents(jar: &str, archive_file_name: String) -> Result<String> {
+fn retrieve_archive_file_contents(jar: &str, archive_file_name: &str) -> Result<String> {
     let jar_file = File::open(jar)?;
     let mut archive = ZipArchive::new(jar_file)?;
-    let mut archive_file = archive.by_name(archive_file_name.as_str())?;
+    let mut archive_file = archive.by_name(archive_file_name)?;
     let mut file_contents = String::new();
 
     archive_file.read_to_string(&mut file_contents)?;
